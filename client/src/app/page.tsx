@@ -40,6 +40,7 @@ export default function Home() {
       setUrl("");
     } catch (err) {
       alert("An error occurred while downloading.");
+      console.log(err);
     }
     setProcessing(false);
   };
