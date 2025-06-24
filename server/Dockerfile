@@ -14,15 +14,11 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-
 COPY package*.json ./
 
 RUN npm install --production --omit=dev --no-audit --prefer-offline
 
-
 COPY . .
-
 
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
