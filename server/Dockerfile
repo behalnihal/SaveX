@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM node:18-alpine
 
 RUN apt-get update && \
     apt-get install -y \
@@ -14,11 +14,9 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Copy package files explicitly
 COPY package.json ./
 COPY package-lock.json ./
 
-# Debug: list files to verify they were copied
 RUN ls -la
 
 RUN npm install --omit=dev --no-audit --prefer-offline
@@ -28,4 +26,5 @@ COPY . .
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
-CMD ["node", "index.js"]
+EXPOSE 8000
+CMD ["npm", "run", "start"]
