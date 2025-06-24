@@ -14,9 +14,14 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-COPY package*.json ./
+# Copy package files explicitly
+COPY package.json ./
+COPY package-lock.json ./
 
-RUN npm install --production --omit=dev --no-audit --prefer-offline
+# Debug: list files to verify they were copied
+RUN ls -la
+
+RUN npm install --omit=dev --no-audit --prefer-offline
 
 COPY . .
 
