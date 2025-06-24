@@ -14,17 +14,8 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-COPY package.json ./
-COPY package-lock.json ./
-
-RUN ls -la
-
-RUN npm install --omit=dev --no-audit --prefer-offline
-
 COPY . .
-
-RUN useradd -m appuser && chown -R appuser:appuser /app
-USER appuser
+RUN npm install --omit=dev --no-audit --prefer-offline
 
 EXPOSE 8000
 CMD ["npm", "run", "start"]
