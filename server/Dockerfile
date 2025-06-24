@@ -14,6 +14,8 @@ RUN apt-get update && \
 
 WORKDIR /app
 
+COPY package.json package-lock.json ./server/
+
 COPY package*.json ./
 
 RUN npm install --production --omit=dev --no-audit --prefer-offline
