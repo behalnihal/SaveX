@@ -7,7 +7,7 @@ export default function Home() {
 
   const isUrlValid = () => {
     if (!url.trim()) return false;
-    if (!url.includes("twitter.com") || !url.includes("x.com")) return false;
+    if (!url.includes("twitter.com") && !url.includes("x.com")) return false;
     return true;
   };
 
