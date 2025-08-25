@@ -1,5 +1,17 @@
 "use client";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import LinePatternBackground from "@/components/LinePatternBackground";
+import { Marquee } from "@/components/magicui/marquee";
+import TypewriterEffect from "@/components/TypewriterEffect";
 
 export default function Home() {
   const [url, setUrl] = useState("");
@@ -46,28 +58,70 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 font-sans">
-      <div className="bg-white/70 backdrop-blur-md shadow-xl rounded-2xl p-8 w-full max-w-md flex flex-col items-center animate-fade-in">
-        <p className="text-lg text-gray-700 mb-6 text-center font-semibold">
-          Download videos from X (Twitter) with ease
-        </p>
-        <form className="flex flex-col items-center w-full gap-3">
-          <input
-            type="text"
-            placeholder="Enter a video URL"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all text-base bg-white/90 placeholder-gray-400 text-black"
-          />
-          <button
-            type="submit"
-            onClick={handleDownload}
-            className="bg-gradient-to-r from-blue-500 to-purple-500 text-white p-3 rounded-lg w-full font-semibold shadow-md hover:from-blue-600 hover:to-purple-600 transition-all duration-200 mt-1 focus:outline-none focus:ring-2 focus:ring-purple-400"
-          >
-            {processing ? "Processing..." : "Download"}
-          </button>
-        </form>
+    <>
+      <LinePatternBackground />
+      <div className="min-h-screen flex items-center justify-center font-sans relative px-4">
+        <div className="w-full max-w-3xl">
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-slate-800 dark:text-slate-200 mb-4 min-h-[3rem] flex items-center justify-center">
+              <TypewriterEffect
+                texts={[
+                  "SaveX",
+                  "Video Downloader",
+                  "Content Saver",
+                  "Media Extractor",
+                ]}
+                speed={150}
+                delay={3000}
+              />
+            </h1>
+            <p className="text-lg text-slate-600 dark:text-slate-400 mb-6">
+              Download videos from X (Twitter) with ease
+            </p>
+          </div>
+
+          <Card className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 shadow-2xl border-0 max-w-md mx-auto">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl font-semibold text-slate-800 dark:text-slate-200">
+                Video Downloader
+              </CardTitle>
+              <CardDescription className="text-slate-600 dark:text-slate-400">
+                Paste your X video URL below to download
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleDownload} className="space-y-4">
+                <Input
+                  type="text"
+                  placeholder="https://x.com/username/status/..."
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  className="bg-white/90 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 focus:border-blue-400 dark:focus:border-blue-400"
+                />
+                <Button
+                  type="submit"
+                  className="w-full text-white font-semibold py-3 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                  disabled={processing}
+                >
+                  {processing ? "Processing..." : "Download Video"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <div className="mt-12">
+            <Marquee className="py-4" pauseOnHover>
+              <div className="flex items-center space-x-8 text-slate-600 dark:text-slate-400">
+                <span className="font-medium">✨ Fast Downloads</span>
+                <span className="font-medium">🔒 Secure & Private</span>
+                <span className="font-medium">🎯 High Quality</span>
+                <span className="font-medium">🚀 No Watermarks</span>
+                <span className="font-medium">📱 Mobile Friendly</span>
+              </div>
+            </Marquee>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
