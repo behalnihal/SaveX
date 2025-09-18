@@ -1,6 +1,8 @@
 # Download Videos from X(previously Twitter) with ease
 
-Check it out : [Click here](https://save-x-pi.vercel.app/)
+#### Enjoy a completely ad-free experience
+
+Check it out : [Click here](https://savex.nihal.works/)
 
 ## Preview
 

@@ -25,11 +25,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: "SaveX",
     description: "SaveX - Download videos from X (Twitter) with ease",
-    url: "https://save-x-pi.vercel.app",
+    url: "https://savex.nihal.works",
     siteName: "SaveX",
     images: [
       {
-        url: "https://save-x-pi.vercel.app/savex-og.png",
+        url: "https://savex.nihal.works/savex-og.png",
         width: 1200,
         height: 630,
         alt: "SaveX",
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "SaveX",
     description: "Download videos from X (Twitter) with ease",
-    images: ["https://save-x-pi.vercel.app/savex-og.png"],
+    images: ["https://savex.nihal.works/savex-og.png"],
   },
   robots: {
     index: true,
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
     "max-snippet": -1,
   },
   alternates: {
-    canonical: "https://save-x-pi.vercel.app",
+    canonical: "https://savex.nihal.works",
   },
 };
 
