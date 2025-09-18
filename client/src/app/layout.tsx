@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     siteName: "SaveX",
     images: [
       {
-        url: "https://save-x-pi.vercel.app/savex.png",
+        url: "https://save-x-pi.vercel.app/savex-og.png",
         width: 1200,
         height: 630,
         alt: "SaveX",
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "SaveX",
     description: "Download videos from X (Twitter) with ease",
-    images: ["https://save-x-pi.vercel.app/savex.png"],
+    images: ["https://save-x-pi.vercel.app/savex-og.png"],
   },
   robots: {
     index: true,
