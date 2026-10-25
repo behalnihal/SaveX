@@ -10,9 +10,6 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://savex.nihal.works"),
   title: "SaveX — Video & Audio Downloader",
   description: "Download videos and audio from YouTube, Instagram, X, TikTok, Vimeo, and Reddit. Choose MP4, WebM, MP3, or M4A and your preferred quality.",
-  icons: {
-    icon: "/savex-dither.png",
-  },
   openGraph: {
     title: "SaveX",
     description: "Your favorite videos. Your preferred format. Download from YouTube, Instagram, X, and more.",

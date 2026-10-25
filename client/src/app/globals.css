@@ -64,15 +64,15 @@ button:disabled { cursor: not-allowed; }
 :focus-visible { outline: 2px solid #bcbcbc; outline-offset: 4px; }
 ::selection { color: #000; background: #ddd; }
 
-.site-shell { display: flex; flex-direction: column; min-height: 100svh; }
-.site-header { width: 100%; padding: 28px 48px; }
-.site-header nav { display: flex; justify-content: space-between; align-items: center; max-width: 1280px; margin: auto; }
+.site-shell { display: flex; flex-direction: column; width: 100%; max-width: 960px; min-height: 100svh; margin-inline: auto; }
+.site-header { width: 100%; padding: 28px 32px; }
+.site-header nav { display: flex; justify-content: space-between; align-items: center; }
 .brand { display: inline-flex; align-items: center; gap: 9px; font-size: 19px; font-weight: 650; letter-spacing: -0.6px; }
 .brand img { image-rendering: pixelated; }
 .source-link { display: flex; align-items: center; gap: 5px; color: #a3a3a3; font-size: 13px; transition: color 150ms; }
 .source-link:hover { color: #fff; }
 .site-main { flex: 1; display: grid; place-items: center; padding: 30px 24px 72px; }
-.downloader { width: 100%; max-width: 480px; }
+.downloader { width: 100%; max-width: 400px; }
 .hero { text-align: center; margin-bottom: 38px; }
 .hero-logo { display: block; margin: 0 auto 26px; image-rendering: pixelated; }
 h1 { margin: 0; font-size: clamp(40px, 7vw, 54px); line-height: 1.08; font-weight: 550; letter-spacing: -2.4px; }
@@ -106,7 +106,7 @@ h1 { margin: 0; font-size: clamp(40px, 7vw, 54px); line-height: 1.08; font-weigh
 .supported-sites > p { color: #898989; font-size: 11px; margin: 0 0 14px; }
 .supported-sites ul { display: flex; justify-content: center; flex-wrap: wrap; column-gap: 18px; row-gap: 10px; list-style: none; margin: 0; padding: 0; color: #b0b0b0; font-size: 12px; }
 .usage-note { text-align: center; margin: 25px auto 0; max-width: 300px; color: #808080; font-size: 10px; line-height: 1.8; }
-.site-footer { width: 100%; max-width: 1376px; margin: auto; display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 24px 48px; border-top: 1px solid #191919; color: #858585; font-size: 11px; line-height: 1.6; }
+.site-footer { width: 100%; margin: auto; display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 24px 32px; border-top: 1px solid #191919; color: #858585; font-size: 11px; line-height: 1.6; }
 .site-footer a:hover { color: #ccc; }
 .loading-spinner { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
