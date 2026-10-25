@@ -1,35 +1,26 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Analytics } from "@vercel/analytics/next";
-import { ThemeProvider } from "@/components/theme-provider";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
-  title: "SaveX",
-  description: "Download videos from X (Twitter) with ease",
+  metadataBase: new URL("https://savex.nihal.works"),
+  title: "SaveX — Video & Audio Downloader",
+  description: "Download videos and audio from YouTube, Instagram, X, TikTok, Vimeo, and Reddit. Choose MP4, WebM, MP3, or M4A and your preferred quality.",
   icons: {
-    icon: "/savex.png",
+    icon: "/savex-dither.png",
   },
   openGraph: {
     title: "SaveX",
-    description: "SaveX - Download videos from X (Twitter) with ease",
+    description: "Your favorite videos. Your preferred format. Download from YouTube, Instagram, X, and more.",
     url: "https://savex.nihal.works",
     siteName: "SaveX",
     images: [
       {
-        url: "https://savex.nihal.works/savex-og.png",
+        url: "https://savex.nihal.works/opengraph-image",
         width: 1200,
         height: 630,
         alt: "SaveX",
@@ -41,8 +32,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "SaveX",
-    description: "Download videos from X (Twitter) with ease",
-    images: ["https://savex.nihal.works/savex-og.png"],
+    description: "Download video and audio from YouTube, Instagram, X, and more.",
+    images: ["https://savex.nihal.works/opengraph-image"],
   },
   robots: {
     index: true,
@@ -62,17 +53,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
       >
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <div className="min-h-screen max-w-3xl mx-auto flex flex-col">
-            <Navbar />
-            <main>{children}</main>
-            <Footer />
-          </div>
-        </ThemeProvider>
+        <div className="site-shell">
+          <Navbar />
+          <main className="site-main">{children}</main>
+          <Footer />
+        </div>
         <Analytics />
       </body>
     </html>
