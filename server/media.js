@@ -13,10 +13,16 @@ const VIDEO_QUALITIES = ["best", "2160", "1440", "1080", "720", "480", "360"];
 const AUDIO_QUALITIES = ["best", "320", "192", "128"];
 
 export class MediaError extends Error {
-  constructor(message, status = 400) {
+  constructor(message, status = 400, code = "INVALID_REQUEST") {
     super(message);
     this.status = status;
+    this.code = code;
   }
+}
+
+export function isYouTubeUrl(url) {
+  const hostname = new URL(url).hostname;
+  return PLATFORMS[0].domains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
 }
 
 function parseTimestamp(value, label) {
@@ -80,26 +86,31 @@ export function parseDownloadOptions(query) {
   return { url: url.href, format, quality, audio, ...(clip ? { clip } : {}) };
 }
 
-export function buildDownloadArgs({ url, format, quality, audio, clip }, directory) {
+export function buildDownloadArgs({ url, format, quality, audio, clip }, directory, { cookiesFile, proxyUrl } = {}) {
   const args = [
     "--ignore-config",
     "--no-playlist",
     "--playlist-items", "1",
     "--no-progress",
-    "--no-warnings",
     "--no-colors",
     "--socket-timeout", "30",
     "--retries", "2",
     "--fragment-retries", "2",
     "--max-filesize", "500M",
     "--match-filters", clip ? `!is_live & duration>?${clip.start}s` : "!is_live",
-    "--js-runtimes", "node",
+    "--js-runtimes", `node:${process.execPath}`,
     "--restrict-filenames",
     "--trim-filenames", "160",
     "--paths", directory,
     "--output", "%(title).100B [%(id)s].%(ext)s",
     "--print", "after_move:%(filepath)j",
   ];
+
+  // These are server-owned settings, never options supplied by a download request.
+  if (isYouTubeUrl(url)) {
+    if (cookiesFile) args.push("--cookies", cookiesFile);
+    if (proxyUrl) args.push("--proxy", proxyUrl);
+  }
 
   if (clip) {
     args.push("--download-sections", `*${clip.start}-${clip.end ?? "inf"}`);
@@ -135,31 +146,58 @@ export function buildDownloadArgs({ url, format, quality, audio, clip }, directo
   return [...args, "--", url];
 }
 
-export function downloadError(error) {
+export function downloadError(error, { url } = {}) {
   if (error.code === "ENOENT") {
-    return new MediaError("The server needs yt-dlp installed before it can download media.", 503);
+    return new MediaError("The server needs yt-dlp installed before it can download media.", 503, "YTDLP_MISSING");
   }
   if (error.killed) {
-    return new MediaError("This download took too long. Try a shorter video or a lower quality.", 504);
+    return new MediaError("This download took too long. Try a shorter video or a lower quality.", 504, "DOWNLOAD_TIMEOUT");
   }
   const detail = String(error.stderr || "");
-  if (/certificate.verify.failed|CERTIFICATE_VERIFY_FAILED/i.test(detail)) {
-    return new MediaError("The download server could not establish a secure connection to this platform. Please try again later.", 502);
+  // Ignore sign-in/cookie suggestions in warnings when the actual error is something else.
+  const errors = detail.split(/\r?\n/).filter((line) => /^ERROR:/i.test(line.trim())).join("\n") || detail;
+  const youtube = (url && isYouTubeUrl(url)) || /\[youtube\]/i.test(detail);
+  if (/certificate.verify.failed|CERTIFICATE_VERIFY_FAILED/i.test(errors)) {
+    return new MediaError("The download server could not establish a secure connection to this platform. Please try again later.", 502, "UPSTREAM_TLS_ERROR");
   }
-  if (/(?:ffmpeg|ffprobe).*(?:not found|not installed|not available)/i.test(detail)) {
-    return new MediaError("The server needs FFmpeg to trim, merge, or convert this media.", 503);
+  if (/(?:ffmpeg|ffprobe).*(?:not found|not installed|not available)/i.test(errors)) {
+    return new MediaError("The server needs FFmpeg to trim, merge, or convert this media.", 503, "FFMPEG_MISSING");
   }
-  if (/start time.*(?:greater|longer|exceed)|time range.*(?:outside|invalid)|requested section.*(?:outside|invalid)/i.test(detail)) {
-    return new MediaError("The selected time range is outside this video's duration. Choose an earlier start time.", 422);
+  if (/start time.*(?:greater|longer|exceed)|time range.*(?:outside|invalid)|requested section.*(?:outside|invalid)/i.test(errors)) {
+    return new MediaError("The selected time range is outside this video's duration. Choose an earlier start time.", 422, "INVALID_TIME_RANGE");
   }
-  if (/sign in|login|log in|cookies|private|age.restricted|confirm you|not a bot/i.test(detail)) {
-    return new MediaError("This platform requires sign-in for this link. Try a public video that plays without signing in.", 422);
+  if (/not a bot|automated (?:requests|traffic)|unusual traffic/i.test(errors)) {
+    return new MediaError(youtube
+      ? "YouTube is asking the download server to verify its session. This can happen even for public videos. Please try again later."
+      : "This platform is asking the download server to verify its session. Please try again later.", 503, youtube ? "YOUTUBE_BOT_CHECK" : "UPSTREAM_BOT_CHECK");
   }
-  if (/requested format.*not available|no video formats/i.test(detail)) {
-    return new MediaError("That format or quality is unavailable. Try Best available or a different format.", 422);
+  if (/HTTP Error 429|too many requests|rate.?limit|This content isn.t available, try again later/i.test(errors)) {
+    return new MediaError("This platform is temporarily limiting requests from the download server. Please try again later.", 503, "UPSTREAM_RATE_LIMIT");
   }
-  if (/too large|larger than|max.filesize/i.test(detail)) {
-    return new MediaError("This file is too large. Try a lower quality or audio only.", 422);
+  if (/sign[ -]?in|login required|log in|private video|age.restricted|members.only|confirm your age/i.test(errors)) {
+    return new MediaError("This video requires an account with access or age verification. Try a public, unrestricted video.", 422, "AUTH_REQUIRED");
   }
-  return new MediaError("Could not download this link. Check that it is public and contains playable media, then try again.", 422);
+  if (youtube && /PO[ -]?Token|proof of origin|HTTP Error 403|403 Forbidden/i.test(errors)) {
+    return new MediaError("YouTube rejected the download server's session. Please try again later.", 503, "YOUTUBE_SESSION_REJECTED");
+  }
+  if (youtube && /no supported JavaScript runtime|challenge solving failed|challenge solver|yt-dlp-ejs|JavaScript runtime.*not (?:found|available)/i.test(detail)) {
+    return new MediaError("The server's YouTube downloader needs an update. Please try again later.", 503, "YOUTUBE_RUNTIME_ERROR");
+  }
+  if (/requested format.*not available|no video formats/i.test(errors)) {
+    return new MediaError("That format or quality is unavailable. Try Best available or a different format.", 422, "FORMAT_UNAVAILABLE");
+  }
+  if (/too large|larger than|max.filesize/i.test(errors)) {
+    return new MediaError("This file is too large. Try a lower quality or audio only.", 422, "FILE_TOO_LARGE");
+  }
+  return new MediaError("Could not download this link. Check that it is public and contains playable media, then try again.", 422, "DOWNLOAD_FAILED");
+}
+
+export function downloadDiagnostic(error) {
+  const detail = String(error.stderr || error.diagnostic || error.code || "DOWNLOAD_FAILED");
+  return detail
+    .replace(/\x1b\[[0-9;]*m/g, "")
+    .replace(/(?:https?|socks[45]h?):\/\/[^\s"'<>]+/gi, "[url]")
+    .replace(/((?:cookie|authorization|proxy-authorization)\s*[:=])[^\r\n]*/gi, "$1 [redacted]")
+    .replace(/((?:po_token|visitor_data|password|token)\s*[:=])[^\s;]+/gi, "$1[redacted]")
+    .split(/\r?\n/).filter(Boolean).slice(-8).join("\n").slice(0, 3000);
 }

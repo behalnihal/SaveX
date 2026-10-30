@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { writeFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
@@ -10,7 +11,7 @@ import { buildDownloadArgs, parseDownloadOptions } from "../media.js";
 const url = "https://www.youtube.com/watch?v=example";
 
 async function startApp(t, options) {
-  const server = createApp(options).listen(0, "127.0.0.1");
+  const server = createApp({ logDownloadError: () => {}, logEvent: () => {}, youtubeCookiesFile: null, youtubeProxyUrl: null, ...options }).listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => new Promise((resolve) => server.close(resolve)));
   return `http://127.0.0.1:${server.address().port}`;
@@ -145,7 +146,7 @@ test("streams each requested format with the actual filename and cleans up", asy
     const response = await fetch(`${base}/download?${new URLSearchParams({ url, format })}`);
     assert.equal(response.status, 200);
     assert.match(response.headers.get("Content-Disposition"), new RegExp(`Example-video\\.${format}`));
-    assert.equal(response.headers.get("Access-Control-Expose-Headers"), "Content-Disposition");
+    assert.equal(response.headers.get("Access-Control-Expose-Headers"), "Content-Disposition,X-Request-Id");
     assert.equal(response.headers.get("Cache-Control"), "no-store");
     assert.equal(await response.text(), `media-${format}`);
   }
@@ -185,9 +186,10 @@ test("cleans partial files on failure and never exposes yt-dlp stderr", async (t
     throw Object.assign(new Error("internal path /private/secret"), { stderr: "ERROR: Sign in to confirm you are not a bot /private/secret" });
   } });
   const response = await fetch(`${base}/download?${new URLSearchParams({ url })}`);
-  assert.equal(response.status, 422);
+  assert.equal(response.status, 503);
   const body = await response.json();
-  assert.match(body.error, /sign-in/);
+  assert.equal(body.code, "YOUTUBE_BOT_CHECK");
+  assert.match(body.error, /even for public videos/);
   assert.ok(!body.error.includes("secret"));
   await assertRemoved(directory);
 });
@@ -196,6 +198,78 @@ test("does not stream files outside its download folder or with the wrong extens
   const base = await startApp(t, { runDownload: async () => ({ stdout: JSON.stringify("/etc/passwd") }) });
   const response = await fetch(`${base}/download?${new URLSearchParams({ url })}`);
   assert.equal(response.status, 422);
+});
+
+test("uses only server-owned YouTube cookies and proxy, then removes the writable cookie copy", async (t) => {
+  const secretDirectory = await mkdtemp(path.join(tmpdir(), "savex-secret-test-"));
+  t.after(() => rm(secretDirectory, { recursive: true, force: true }));
+  const cookiesFile = path.join(secretDirectory, "cookies.txt");
+  const cookies = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\ttest-session\tfixture-value\n";
+  await writeFile(cookiesFile, cookies, { mode: 0o400 });
+  let directory;
+  const base = await startApp(t, {
+    youtubeCookiesFile: cookiesFile,
+    youtubeProxyUrl: "http://user:password@proxy.example:8080",
+    runDownload: async (_executable, args) => {
+      directory = args[args.indexOf("--paths") + 1];
+      const writableCookies = args[args.indexOf("--cookies") + 1];
+      assert.equal(path.dirname(writableCookies), directory);
+      assert.notEqual(writableCookies, cookiesFile);
+      assert.equal(await readFile(writableCookies, "utf8"), cookies);
+      assert.equal((await stat(writableCookies)).mode & 0o777, 0o600);
+      assert.equal(args[args.indexOf("--proxy") + 1], "http://user:password@proxy.example:8080/");
+      assert.ok(!args.includes("attacker-value"));
+      await writeFile(writableCookies, "changed by downloader");
+      const filename = path.join(directory, "video.mp4");
+      await writeFile(filename, "video");
+      return { stdout: JSON.stringify(filename) };
+    },
+  });
+  const response = await fetch(`${base}/download?${new URLSearchParams({ url, cookies: "attacker-value", proxy: "attacker-value" })}`);
+  assert.equal(response.status, 200);
+  await response.text();
+  await assertRemoved(directory);
+  assert.equal(await readFile(cookiesFile, "utf8"), cookies);
+});
+
+test("logs a redacted upstream error with a matching response request ID", async (t) => {
+  const events = [];
+  const base = await startApp(t, {
+    logDownloadError: (event) => events.push(event),
+    runDownload: async () => {
+      throw { stderr: "ERROR: [youtube] Sign in to confirm you're not a bot. https://user:secret@proxy.example/?token=secret\nCookie: SID=secret\nAuthorization: Bearer secret" };
+    },
+  });
+  const response = await fetch(`${base}/download?${new URLSearchParams({ url })}`);
+  assert.equal(response.status, 503);
+  const body = await response.json();
+  assert.equal(body.code, "YOUTUBE_BOT_CHECK");
+  assert.equal(body.requestId, response.headers.get("X-Request-Id"));
+  assert.equal(events.length, 1);
+  assert.equal(events[0].requestId, body.requestId);
+  assert.ok(!JSON.stringify(events).includes("secret"));
+  assert.ok(!JSON.stringify(body).includes("secret"));
+});
+
+test("logs request, processing, prepared-file, and completion events for a download", async (t) => {
+  const events = [];
+  let directory;
+  const base = await startApp(t, {
+    logEvent: (event) => events.push(event),
+    runDownload: async (_executable, args) => {
+      directory = args[args.indexOf("--paths") + 1];
+      const filename = path.join(directory, "video.mp4");
+      await writeFile(filename, "fixture");
+      return { stdout: JSON.stringify(filename) };
+    },
+  });
+  const response = await fetch(`${base}/download?${new URLSearchParams({ url })}`);
+  assert.equal(response.status, 200);
+  await response.text();
+  await assertRemoved(directory);
+  assert.deepEqual(events.map((event) => event.event), ["download_received", "download_started", "ytdlp_started", "download_prepared", "download_completed"]);
+  assert.ok(events.every((event) => event.requestId === response.headers.get("X-Request-Id")));
+  assert.equal(events.find((event) => event.event === "download_prepared").bytes, 7);
 });
 
 test("returns actionable dependency and timeout errors", async (t) => {

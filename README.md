@@ -10,7 +10,7 @@ Supports public links from **YouTube (including Shorts), Instagram (including Re
 - Correct file extensions and filenames after conversion, inline errors, and cancellation.
 - One media item per request. For multi-video posts, saves the first item. Live streams are excluded.
 
-Quality choices are ceilings, not promises: downloads use available source quality without upscaling. Increasing an audio bitrate cannot improve the original recording. Some sites require login, cookies, or bot verification even for public posts; SaveX currently handles public links that yt-dlp can access without authentication.
+Quality choices are ceilings, not promises: downloads use available source quality without upscaling. Increasing an audio bitrate cannot improve the original recording. Some sites require login, cookies, or bot verification even for public posts. YouTube can optionally use a server-managed session; see troubleshooting below.
 
 ## Run locally
 
@@ -65,7 +65,7 @@ curl --get http://localhost:8000/download \
 
 For a clip, add `--data-urlencode 'start=00:30' --data-urlencode 'end=01:00'` to the example above. Leave both blank or omit them for the full download. A start alone saves through the end; an end alone starts at the beginning. Trimming uses yt-dlp's `--download-sections` and FFmpeg. Video clips are re-encoded for cleaner cuts, so preparing a clip can take longer than a full download. An end beyond the source duration stops at the source's end.
 
-Successful responses are file attachments with the final filename in `Content-Disposition`. Failures return JSON `{ "error": "..." }` and a suitable HTTP status. The server allows three concurrent downloads, aborts work when the client disconnects, times out downloads after ten minutes, and cleans up temporary files on completion or failure. yt-dlp skips files larger than 500 MB when their size is known; this flag does not enforce a hard limit on streams of unknown size. Put deployment-specific traffic and resource limits at your reverse proxy.
+Successful responses are file attachments with the final filename in `Content-Disposition`. Failures return JSON `{ "error": "...", "code": "...", "requestId": "..." }` and a suitable HTTP status. `X-Request-Id` matches the corresponding redacted container log. The server allows three concurrent downloads, aborts work when the client disconnects, times out downloads after ten minutes, and cleans up temporary files on completion or failure. yt-dlp skips files larger than 500 MB when their size is known; this flag does not enforce a hard limit on streams of unknown size. Put deployment-specific traffic and resource limits at your reverse proxy.
 
 ## Verify
 
@@ -91,5 +91,61 @@ docker build -t savex-api .
 docker run --rm -p 8000:8000 -e CLIENT_ORIGIN=http://localhost:3000 savex-api
 ```
 
-The image includes Node, Python, FFmpeg, and the official yt-dlp executable. Rebuild it regularly to pick up extractor fixes.
+The image includes Node, Python, FFmpeg, CA certificates, and the official yt-dlp nightly executable with bundled EJS scripts. The nightly channel is [recommended by yt-dlp](https://github.com/yt-dlp/yt-dlp#update) for site compatibility. Set `--build-arg YT_DLP_CHANNEL=stable` to use stable, or `--build-arg YT_DLP_VERSION=RELEASE_TAG` to pin a release on the selected channel.
+
+## YouTube troubleshooting
+
+YouTube can challenge a server session even when the video plays publicly in a browser. A `YOUTUBE_BOT_CHECK` response identifies this; it does not mean the video itself is private. An `AUTH_REQUIRED` response identifies content that requires account access or age verification.
+
+First rebuild and redeploy the **API container**, bypassing the cached yt-dlp download layer:
+
+```sh
+cd server
+docker build --pull --no-cache -t savex-api .
+```
+
+Then diagnose the same URL **inside the running container** so the check uses its network and configuration:
+
+```sh
+docker exec YOUR_CONTAINER npm run diagnose:youtube -- 'https://www.youtube.com/watch?v=b52WH2gAim4'
+```
+
+This prints the yt-dlp/Node versions, whether cookies and a proxy are configured, format-extraction results, and redacted errors. It does not download the video or print cookie contents or proxy credentials. Locally, run the same `npm run diagnose:youtube -- 'URL'` command from `server/`.
+
+### Container logs
+
+SaveX writes structured JSON logs to stdout and stderr, so they appear in your host's container log viewer or with:
+
+```sh
+docker logs --follow YOUR_CONTAINER
+```
+
+At startup, look for `server_started` and `dependency_version` events for yt-dlp and FFmpeg. Each download emits `download_received`, `download_started`, `ytdlp_started`, live `ytdlp_stderr` messages, and either `download_prepared` / `download_completed`, `download_failed`, or `download_cancelled`. Every event carries a request ID; failures include the classification code and redacted upstream details. Cookie contents, signed URLs, and proxy credentials are omitted. No log files inside the image or special logging environment variables are needed.
+
+### Optional session configuration
+
+If YouTube still challenges the server, configure an authorized session using a Netscape-format cookies file, following [yt-dlp's YouTube cookie instructions](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies). Keep cookies outside the repository and mount them as a secret:
+
+```sh
+docker run --rm -p 8000:8000 \
+  -e CLIENT_ORIGIN=https://YOUR_FRONTEND \
+  -e YOUTUBE_COOKIES_FILE=/run/secrets/youtube-cookies.txt \
+  --mount type=bind,source=/ABSOLUTE/PRIVATE/PATH/youtube-cookies.txt,target=/run/secrets/youtube-cookies.txt,readonly \
+  savex-api
+```
+
+SaveX makes a private, writable copy for each YouTube download and deletes it with the other temporary files. The original secret stays unchanged. Cookies are never accepted from query parameters, sent to the frontend, or used for other platforms. Treat this file as an account credential and replace it when its session expires. yt-dlp warns that accounts used for downloading can be restricted; use a dedicated account with appropriate access if authentication is necessary.
+
+`YOUTUBE_PROXY_URL` optionally selects an HTTP, HTTPS, or SOCKS5 proxy you control for YouTube extraction and downloading. Configure it through your deployment's secret environment settings. A proxy or cookie file is not guaranteed to resolve a challenged session. Do not disable TLS verification to address these errors.
+
+| Error code | Server-side next step |
+| --- | --- |
+| `YOUTUBE_BOT_CHECK` | Check the session and server network using the diagnosis command; configure fresh cookies if required. |
+| `YOUTUBE_SESSION_REJECTED` | Inspect the redacted upstream error. For PO token requirements, follow the official [PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide); SaveX does not bundle a token provider. |
+| `YOUTUBE_RUNTIME_ERROR` | Rebuild with the current downloader and bundled EJS scripts; Node 22+ is required. |
+| `YOUTUBE_CONFIG_ERROR` | Check the cookies secret mount, Netscape file format, and proxy URL. |
+| `UPSTREAM_RATE_LIMIT` | Reduce request traffic and wait before retrying. |
+| `UPSTREAM_TLS_ERROR` | Fix the container's CA trust or network configuration. |
+
+An update fixes extractor compatibility issues; a genuine session or network challenge requires deployment configuration. The website cannot sign into a user's YouTube browser session.
 
