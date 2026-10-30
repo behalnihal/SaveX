@@ -6,6 +6,7 @@ Supports public links from **YouTube (including Shorts), Instagram (including Re
 
 - **Video:** MP4 or WebM, best available or a resolution cap from 360p to 4K.
 - **Audio only:** MP3 or M4A, best available or a target bitrate of 128, 192, or 320 kbps.
+- **Trim:** optional start and end times for video or audio clips. Accepts seconds, `MM:SS`, or `HH:MM:SS`, including up to three decimal places for seconds.
 - Correct file extensions and filenames after conversion, inline errors, and cancellation.
 - One media item per request. For multi-video posts, saves the first item. Live streams are excluded.
 
@@ -59,6 +60,10 @@ curl --get http://localhost:8000/download \
 | `format` | `mp4`, `webm`, `mp3`, `m4a` | `mp4` |
 | Video `quality` | `best`, `2160`, `1440`, `1080`, `720`, `480`, `360` | `best` |
 | Audio `quality` | `best`, `320`, `192`, `128` | `best` |
+| `start` | Optional start time, e.g. `90`, `01:30`, or `00:01:30.500` | Beginning |
+| `end` | Optional end time, later than `start` | End of media |
+
+For a clip, add `--data-urlencode 'start=00:30' --data-urlencode 'end=01:00'` to the example above. Leave both blank or omit them for the full download. A start alone saves through the end; an end alone starts at the beginning. Trimming uses yt-dlp's `--download-sections` and FFmpeg. Video clips are re-encoded for cleaner cuts, so preparing a clip can take longer than a full download. An end beyond the source duration stops at the source's end.
 
 Successful responses are file attachments with the final filename in `Content-Disposition`. Failures return JSON `{ "error": "..." }` and a suitable HTTP status. The server allows three concurrent downloads, aborts work when the client disconnects, times out downloads after ten minutes, and cleans up temporary files on completion or failure. yt-dlp skips files larger than 500 MB when their size is known; this flag does not enforce a hard limit on streams of unknown size. Put deployment-specific traffic and resource limits at your reverse proxy.
 
@@ -76,7 +81,7 @@ npm run typecheck
 npm run build
 ```
 
-API tests cover platform validation, argument injection, quality selection, all output formats, streamed filenames, cleanup, resource limits, and errors without requiring third-party network access.
+API tests cover platform validation, argument injection, quality and time range selection, all output formats, streamed filenames, cleanup, resource limits, and errors without requiring third-party network access.
 
 ## Docker API
 

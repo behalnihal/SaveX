@@ -74,9 +74,56 @@ test("extracts audio at the selected bitrate", () => {
   }
 });
 
+test("parses optional timestamps and open-ended clips", () => {
+  for (const [query, clip] of [
+    [{ start: "90", end: "120" }, { start: 90, end: 120 }],
+    [{ start: " 01:30 ", end: "2:00.250" }, { start: 90, end: 120.25 }],
+    [{ start: "01:02:03.125", end: "01:03:00" }, { start: 3723.125, end: 3780 }],
+    [{ start: "90:00" }, { start: 5400, end: null }],
+    [{ start: "0.001" }, { start: 0.001, end: null }],
+    [{ start: "00:00" }, { start: 0, end: null }],
+    [{ end: "00:30" }, { start: 0, end: 30 }],
+    [{ start: "", end: "10" }, { start: 0, end: 10 }],
+    [{ start: "15", end: " " }, { start: 15, end: null }],
+  ]) {
+    assert.deepEqual(parseDownloadOptions({ url, ...query }).clip, clip);
+  }
+  assert.deepEqual(parseDownloadOptions({ url, start: " ", end: "" }), parseDownloadOptions({ url }));
+});
+
+test("rejects invalid timestamps and empty or reversed ranges", () => {
+  for (const value of ["-1", "1e2", "NaN", "Infinity", "00:60", "01:60:00", "1:2", "1:00:60", "1:02:03:04", "1.1234", "9007199254740991", "1;whoami", "1-20", "*intro", ["1", "2"], { time: "1" }]) {
+    for (const field of ["start", "end"]) {
+      assert.throws(() => parseDownloadOptions({ url, [field]: value }), { status: 400 });
+    }
+  }
+  for (const query of [{ end: "0" }, { start: "10", end: "10" }, { start: "01:00", end: "59" }]) {
+    assert.throws(() => parseDownloadOptions({ url, ...query }), { status: 400, message: "End time must be later than start time." });
+  }
+});
+
+test("builds bounded and one-sided clips for video and audio without changing full downloads", () => {
+  for (const format of ["mp4", "webm", "mp3", "m4a"]) {
+    const fullArgs = buildDownloadArgs(parseDownloadOptions({ url, format }), "/tmp/savex-test");
+    assert.ok(!fullArgs.includes("--download-sections"));
+    assert.ok(!fullArgs.includes("--force-keyframes-at-cuts"));
+    for (const [query, range] of [
+      [{ start: "1:02.500", end: "70" }, "*62.5-70"],
+      [{ start: "10" }, "*10-inf"],
+      [{ end: "20" }, "*0-20"],
+    ]) {
+      const args = buildDownloadArgs(parseDownloadOptions({ url, format, ...query }), "/tmp/savex-test");
+      assert.equal(args[args.indexOf("--download-sections") + 1], range);
+      assert.match(args[args.indexOf("--match-filters") + 1], /duration>\?/);
+      assert.equal(args.includes("--force-keyframes-at-cuts"), ["mp4", "webm"].includes(format));
+      assert.deepEqual(args.slice(-2), ["--", url]);
+    }
+  }
+});
+
 test("returns validation errors without starting yt-dlp", async (t) => {
   const base = await startApp(t, { runDownload: () => assert.fail("Must not run for invalid input") });
-  for (const query of ["", "?url=https://localhost/a", `?url=${encodeURIComponent(url)}&format=wav`, `?url=${encodeURIComponent(url)}&url=${encodeURIComponent(url)}`]) {
+  for (const query of ["", "?url=https://localhost/a", `?url=${encodeURIComponent(url)}&format=wav`, `?url=${encodeURIComponent(url)}&url=${encodeURIComponent(url)}`, `?url=${encodeURIComponent(url)}&start=20&end=10`, `?url=${encodeURIComponent(url)}&start=1&start=2`, `?url=${encodeURIComponent(url)}&end=00:60`]) {
     const response = await fetch(`${base}/download${query}`);
     assert.equal(response.status, 400);
     assert.equal(typeof (await response.json()).error, "string");
@@ -104,6 +151,30 @@ test("streams each requested format with the actual filename and cleans up", asy
   }
   assert.equal(new Set(directories).size, 4);
   await Promise.all(directories.map(assertRemoved));
+});
+
+test("passes clip timestamps through the HTTP route and returns the prepared clip", async (t) => {
+  let directory;
+  const base = await startApp(t, { runDownload: async (_executable, args) => {
+    assert.equal(args[args.indexOf("--download-sections") + 1], "*62.5-70");
+    assert.equal(args[args.indexOf("--match-filters") + 1], "!is_live & duration>?62.5s");
+    assert.ok(args.includes("--extract-audio"));
+    directory = args[args.indexOf("--paths") + 1];
+    const filename = path.join(directory, "clip.mp3");
+    await writeFile(filename, "audio clip");
+    return { stdout: JSON.stringify(filename) };
+  } });
+  const response = await fetch(`${base}/download?${new URLSearchParams({ url, format: "mp3", start: "1:02.5", end: "70" })}`);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "audio clip");
+  await assertRemoved(directory);
+});
+
+test("explains empty time ranges when yt-dlp produces no clip", async (t) => {
+  const base = await startApp(t, { runDownload: async () => ({ stdout: "" }) });
+  const response = await fetch(`${base}/download?${new URLSearchParams({ url, start: "9999" })}`);
+  assert.equal(response.status, 422);
+  assert.match((await response.json()).error, /start time is within/);
 });
 
 test("cleans partial files on failure and never exposes yt-dlp stderr", async (t) => {

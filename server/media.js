@@ -19,6 +19,18 @@ export class MediaError extends Error {
   }
 }
 
+function parseTimestamp(value, label) {
+  if (value === undefined || (typeof value === "string" && !value.trim())) return undefined;
+  if (typeof value !== "string" || value.length > 16 || !/^\d+(?::[0-5]\d){0,2}(?:\.\d{1,3})?$/.test(value.trim())) {
+    throw new MediaError(`${label} must be seconds, MM:SS, or HH:MM:SS (for example, 90 or 01:30).`);
+  }
+  const seconds = value.trim().split(":").reduce((total, part) => total * 60 + Number(part), 0);
+  if (!Number.isSafeInteger(Math.round(seconds * 1000))) {
+    throw new MediaError(`${label} is too large.`);
+  }
+  return seconds;
+}
+
 export function parseDownloadOptions(query) {
   if (typeof query.url !== "string" || query.url.length > 4096) {
     throw new MediaError("Enter a video or audio URL.");
@@ -56,12 +68,19 @@ export function parseDownloadOptions(query) {
     throw new MediaError(audio ? "Choose a valid audio bitrate." : "Choose a valid video quality.");
   }
 
+  const start = parseTimestamp(query.start, "Start time");
+  const end = parseTimestamp(query.end, "End time");
+  if (end !== undefined && end <= (start ?? 0)) {
+    throw new MediaError("End time must be later than start time.");
+  }
+  const clip = start !== undefined || end !== undefined ? { start: start ?? 0, end: end ?? null } : undefined;
+
   url.hostname = hostname;
   url.hash = "";
-  return { url: url.href, format, quality, audio };
+  return { url: url.href, format, quality, audio, ...(clip ? { clip } : {}) };
 }
 
-export function buildDownloadArgs({ url, format, quality, audio }, directory) {
+export function buildDownloadArgs({ url, format, quality, audio, clip }, directory) {
   const args = [
     "--ignore-config",
     "--no-playlist",
@@ -73,7 +92,7 @@ export function buildDownloadArgs({ url, format, quality, audio }, directory) {
     "--retries", "2",
     "--fragment-retries", "2",
     "--max-filesize", "500M",
-    "--match-filters", "!is_live",
+    "--match-filters", clip ? `!is_live & duration>?${clip.start}s` : "!is_live",
     "--js-runtimes", "node",
     "--restrict-filenames",
     "--trim-filenames", "160",
@@ -81,6 +100,12 @@ export function buildDownloadArgs({ url, format, quality, audio }, directory) {
     "--output", "%(title).100B [%(id)s].%(ext)s",
     "--print", "after_move:%(filepath)j",
   ];
+
+  if (clip) {
+    args.push("--download-sections", `*${clip.start}-${clip.end ?? "inf"}`);
+    // Re-encode video cuts so clips don't begin at an earlier keyframe.
+    if (!audio) args.push("--force-keyframes-at-cuts");
+  }
 
   if (audio) {
     args.push(
@@ -122,7 +147,10 @@ export function downloadError(error) {
     return new MediaError("The download server could not establish a secure connection to this platform. Please try again later.", 502);
   }
   if (/(?:ffmpeg|ffprobe).*(?:not found|not installed|not available)/i.test(detail)) {
-    return new MediaError("The server needs FFmpeg to merge video or convert this format.", 503);
+    return new MediaError("The server needs FFmpeg to trim, merge, or convert this media.", 503);
+  }
+  if (/start time.*(?:greater|longer|exceed)|time range.*(?:outside|invalid)|requested section.*(?:outside|invalid)/i.test(detail)) {
+    return new MediaError("The selected time range is outside this video's duration. Choose an earlier start time.", 422);
   }
   if (/sign in|login|log in|cookies|private|age.restricted|confirm you|not a bot/i.test(detail)) {
     return new MediaError("This platform requires sign-in for this link. Try a public video that plays without signing in.", 422);

@@ -26,15 +26,26 @@ function downloadFilename(header: string | null, format: string) {
   return header?.match(/filename="([^"]+)"/i)?.[1] || `savex.${format}`;
 }
 
+function timestampSeconds(value: string) {
+  if (value.length > 16 || !/^\d+(?::[0-5]\d){0,2}(?:\.\d{1,3})?$/.test(value.trim())) return NaN;
+  const seconds = value.trim().split(":").reduce((total, part) => total * 60 + Number(part), 0);
+  return Number.isSafeInteger(Math.round(seconds * 1000)) ? seconds : NaN;
+}
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [format, setFormat] = useState("mp4");
   const [quality, setQuality] = useState("best");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [timeError, setTimeError] = useState<{ field: "start" | "end"; message: string } | null>(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const request = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const startInput = useRef<HTMLInputElement>(null);
+  const endInput = useRef<HTMLInputElement>(null);
   const isAudio = formats.find((item) => item.value === format)?.audio;
 
   useEffect(() => () => request.current?.abort(), []);
@@ -43,6 +54,7 @@ export default function Home() {
     event.preventDefault();
     setError("");
     setSuccess(false);
+    setTimeError(null);
     let mediaUrl: URL;
     try {
       mediaUrl = new URL(url.trim());
@@ -53,12 +65,28 @@ export default function Home() {
       return;
     }
 
+    const start = startTime.trim() ? timestampSeconds(startTime) : 0;
+    const end = endTime.trim() ? timestampSeconds(endTime) : null;
+    if (!Number.isFinite(start) || (end !== null && !Number.isFinite(end))) {
+      const field = !Number.isFinite(start) ? "start" : "end";
+      setTimeError({ field, message: "Use seconds, MM:SS, or HH:MM:SS. For example, 90 or 01:30." });
+      (field === "start" ? startInput : endInput).current?.focus();
+      return;
+    }
+    if (end !== null && end <= start) {
+      setTimeError({ field: "end", message: "End time must be later than start time." });
+      endInput.current?.focus();
+      return;
+    }
+
     setProcessing(true);
     const controller = new AbortController();
     request.current = controller;
     try {
       const api = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
       const params = new URLSearchParams({ url: mediaUrl.href, format, quality });
+      if (startTime.trim()) params.set("start", startTime.trim());
+      if (endTime.trim()) params.set("end", endTime.trim());
       const response = await fetch(`${api}/download?${params}`, { signal: controller.signal });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -149,6 +177,47 @@ export default function Home() {
         </div>
 
         <p className="quality-note">{isAudio ? "Audio extracted from the original video." : "Quality depends on the source. We never upscale."}</p>
+
+        <div className="time-fields" role="group" aria-label="Trim media (optional)">
+          <div className="time-field">
+            <label htmlFor="start-time">Start time <span>(optional)</span></label>
+            <input
+              ref={startInput}
+              id="start-time"
+              name="start"
+              type="text"
+              placeholder="00:00"
+              value={startTime}
+              onChange={(event) => { setStartTime(event.target.value); setTimeError(null); setError(""); setSuccess(false); }}
+              disabled={processing}
+              maxLength={16}
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={timeError?.field === "start"}
+              aria-describedby={timeError?.field === "start" ? "time-error" : "time-help"}
+            />
+          </div>
+          <div className="time-field">
+            <label htmlFor="end-time">End time <span>(optional)</span></label>
+            <input
+              ref={endInput}
+              id="end-time"
+              name="end"
+              type="text"
+              placeholder={isAudio ? "End of audio" : "End of video"}
+              value={endTime}
+              onChange={(event) => { setEndTime(event.target.value); setTimeError(null); setError(""); setSuccess(false); }}
+              disabled={processing}
+              maxLength={16}
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={timeError?.field === "end"}
+              aria-describedby={timeError?.field === "end" ? "time-error" : "time-help"}
+            />
+          </div>
+        </div>
+        <p className="time-note" id="time-help">Use seconds, MM:SS, or HH:MM:SS. Leave blank for the full {isAudio ? "audio" : "video"}.</p>
+        {timeError && <p className="time-error" id="time-error" role="alert">{timeError.message}</p>}
 
         <button type="submit" disabled={processing || !url.trim()} className="download-button">
           {processing ? <LoaderCircle size={18} className="loading-spinner" aria-hidden="true" /> : <ArrowDown size={18} aria-hidden="true" />}

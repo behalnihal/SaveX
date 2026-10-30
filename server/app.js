@@ -57,7 +57,9 @@ export function createApp({ runDownload = execFileAsync, maxDownloads = 3 } = {}
       // yt-dlp reports the actual path after merging or conversion, not the input extension.
       const result = stdout.trim().split(/\r?\n/).at(-1);
       if (!result) {
-        throw new MediaError("No downloadable file was found. Try a public, recorded video under 500 MB.", 422);
+        throw new MediaError(options.clip
+          ? "No media was found in that time range. Check that the start time is within the video."
+          : "No downloadable file was found. Try a public, recorded video under 500 MB.", 422);
       }
       const filename = JSON.parse(result);
       if (

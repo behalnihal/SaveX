@@ -93,6 +93,15 @@ h1 { margin: 0; font-size: clamp(40px, 7vw, 54px); line-height: 1.08; font-weigh
 .select-wrap select:hover { border-color: #555; }
 .select-wrap > svg { pointer-events: none; position: absolute; top: 16px; right: 13px; color: #888; }
 .quality-note { margin: 13px 0 24px; color: #898989; font-size: 11px; line-height: 1.6; }
+.time-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.time-field { min-width: 0; }
+.time-field label span { color: #898989; font-weight: 400; }
+.time-field input { width: 100%; min-width: 0; height: 48px; border: 1px solid #292929; border-radius: 8px; padding: 0 14px; background: #0b0b0b; color: #ddd; font-size: 13px; font-variant-numeric: tabular-nums; }
+.time-field input::placeholder { color: #727272; }
+.time-field input:hover:enabled { border-color: #555; }
+.time-field input[aria-invalid="true"] { border-color: #b56d6d; }
+.time-note { margin: 13px 0 24px; color: #898989; font-size: 11px; line-height: 1.6; }
+.time-error { margin: -12px 0 20px; color: #ffaaaa; font-size: 12px; line-height: 1.7; }
 .download-button { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 50px; border: 1px solid #f5f5f5; border-radius: 8px; background: #f5f5f5; color: #000; font-size: 13px; font-weight: 650; transition: background 150ms, opacity 150ms; }
 .download-button:hover:enabled { background: #dcdcdc; border-color: #dcdcdc; }
 .download-button:disabled { opacity: 0.4; }
@@ -115,7 +124,7 @@ h1 { margin: 0; font-size: clamp(40px, 7vw, 54px); line-height: 1.08; font-weigh
   .site-main { padding-top: 28px; padding-bottom: 48px; }
   .hero { margin-bottom: 32px; }
   .hero-logo { width: 88px; height: 88px; margin-bottom: 22px; }
-  .format-fields { gap: 12px; }
+  .format-fields, .time-fields { gap: 12px; }
   .site-footer { padding: 22px 24px; flex-direction: column; gap: 8px; text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) {
